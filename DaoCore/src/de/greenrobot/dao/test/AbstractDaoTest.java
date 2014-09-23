@@ -18,13 +18,12 @@ package de.greenrobot.dao.test;
 
 import java.lang.reflect.Method;
 
-import android.app.Application;
 import android.database.sqlite.SQLiteDatabase;
 import de.greenrobot.dao.AbstractDao;
 import de.greenrobot.dao.DaoLog;
-import de.greenrobot.dao.IdentityScope;
+import de.greenrobot.dao.InternalUnitTestDaoAccess;
 import de.greenrobot.dao.Property;
-import de.greenrobot.dao.UnitTestDaoAccess;
+import de.greenrobot.dao.identityscope.IdentityScope;
 
 /**
  * Base class for DAO related testing. Prepares an in-memory DB and DAO.
@@ -38,11 +37,11 @@ import de.greenrobot.dao.UnitTestDaoAccess;
  * @param <K>
  *            Key type of the DAO
  */
-public abstract class AbstractDaoTest<D extends AbstractDao<T, K>, T, K> extends DbTest<Application> {
+public abstract class AbstractDaoTest<D extends AbstractDao<T, K>, T, K> extends DbTest {
 
     protected final Class<D> daoClass;
     protected D dao;
-    protected UnitTestDaoAccess<T, K> daoAccess;
+    protected InternalUnitTestDaoAccess<T, K> daoAccess;
     protected Property pkColumn;
     protected IdentityScope<K, T> identityScopeForDao;
 
@@ -61,11 +60,11 @@ public abstract class AbstractDaoTest<D extends AbstractDao<T, K>, T, K> extends
 
     @SuppressWarnings("unchecked")
     @Override
-    protected void setUp() {
+    protected void setUp() throws Exception {
         super.setUp();
         try {
             setUpTableForDao();
-            daoAccess = new UnitTestDaoAccess<T, K>(db, (Class<AbstractDao<T, K>>) daoClass, identityScopeForDao);
+            daoAccess = new InternalUnitTestDaoAccess<T, K>(db, (Class<AbstractDao<T, K>>) daoClass, identityScopeForDao);
             dao = (D) daoAccess.getDao();
         } catch (Exception e) {
             throw new RuntimeException("Could not prepare DAO Test", e);

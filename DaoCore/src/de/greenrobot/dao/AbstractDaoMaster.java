@@ -20,6 +20,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import android.database.sqlite.SQLiteDatabase;
+import de.greenrobot.dao.identityscope.IdentityScopeType;
+import de.greenrobot.dao.internal.DaoConfig;
 
 /**
  * The master of dao will guide you: start dao sessions with the master.

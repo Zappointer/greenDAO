@@ -32,14 +32,14 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteStatement;
 
 import de.greenrobot.dao.AbstractDao;
-import de.greenrobot.dao.DaoConfig;
 import de.greenrobot.dao.Property;
 <#if entity.toOneRelations?has_content>
-import de.greenrobot.dao.SqlUtils;
+import de.greenrobot.dao.internal.SqlUtils;
 </#if>
+import de.greenrobot.dao.internal.DaoConfig;
 <#if entity.incomingToManyRelations?has_content>
-import de.greenrobot.dao.Query;
-import de.greenrobot.dao.QueryBuilder;
+import de.greenrobot.dao.query.Query;
+import de.greenrobot.dao.query.QueryBuilder;
 </#if>
 
 <#if entity.javaPackageDao != schema.defaultJavaPackageDao>
@@ -274,23 +274,25 @@ as property>${property.columnName}<#if property_has_next>,</#if></#list>);");
     
 <#list entity.incomingToManyRelations as toMany>
     /** Internal query to resolve the "${toMany.name}" to-many relationship of ${toMany.sourceEntity.className}. */
-    public synchronized List<${toMany.targetEntity.className}> _query${toMany.sourceEntity.className?cap_first}_${toMany.name?cap_first}(<#--
+    public List<${toMany.targetEntity.className}> _query${toMany.sourceEntity.className?cap_first}_${toMany.name?cap_first}(<#--
     --><#list toMany.targetProperties as property>${property.javaType} ${property.propertyName}<#if property_has_next>, </#if></#list>) {
-        if (${toMany.sourceEntity.className?uncap_first}_${toMany.name?cap_first}Query == null) {
-            QueryBuilder<${toMany.targetEntity.className}> queryBuilder = queryBuilder();
+        synchronized (this) {
+            if (${toMany.sourceEntity.className?uncap_first}_${toMany.name?cap_first}Query == null) {
+                QueryBuilder<${toMany.targetEntity.className}> queryBuilder = queryBuilder();
 <#list toMany.targetProperties as property>
-            queryBuilder.where(Properties.${property.propertyName?cap_first}.eq(${property.propertyName}));
+                queryBuilder.where(Properties.${property.propertyName?cap_first}.eq(null));
 </#list>
 <#if toMany.order?has_content>
-            queryBuilder.orderRaw("${toMany.order}");
+                queryBuilder.orderRaw("${toMany.order}");
 </#if>
-            ${toMany.sourceEntity.className?uncap_first}_${toMany.name?cap_first}Query = queryBuilder.build();
-        } else {
-<#list toMany.targetProperties as property>
-            ${toMany.sourceEntity.className?uncap_first}_${toMany.name?cap_first}Query.setParameter(${property_index}, ${property.propertyName});
-</#list>
+                ${toMany.sourceEntity.className?uncap_first}_${toMany.name?cap_first}Query = queryBuilder.build();
+            }
         }
-        return ${toMany.sourceEntity.className?uncap_first}_${toMany.name?cap_first}Query.list();
+        Query<${toMany.targetEntity.className}> query = ${toMany.sourceEntity.className?uncap_first}_${toMany.name?cap_first}Query.forCurrentThread();
+<#list toMany.targetProperties as property>
+        query.setParameter(${property_index}, ${property.propertyName});
+</#list>
+        return query.list();
     }
 
 </#list>   

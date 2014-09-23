@@ -75,13 +75,17 @@ public class Order {
 
     /** To-one relationship, resolved on first access. */
     public Customer getCustomer() {
-        if (customer__resolvedKey == null || !customer__resolvedKey.equals(customerId)) {
+        long __key = this.customerId;
+        if (customer__resolvedKey == null || !customer__resolvedKey.equals(__key)) {
             if (daoSession == null) {
                 throw new DaoException("Entity is detached from DAO context");
             }
             CustomerDao targetDao = daoSession.getCustomerDao();
-            customer = targetDao.load(customerId);
-            customer__resolvedKey = customerId;
+            Customer customerNew = targetDao.load(__key);
+            synchronized (this) {
+                customer = customerNew;
+            	customer__resolvedKey = __key;
+            }
         }
         return customer;
     }
@@ -90,9 +94,11 @@ public class Order {
         if (customer == null) {
             throw new DaoException("To-one property 'customerId' has not-null constraint; cannot set to-one to null");
         }
+        synchronized (this) {
         this.customer = customer;
         customerId = customer.getId();
         customer__resolvedKey = customerId;
+    }
     }
 
     /** Convenient call for {@link AbstractDao#delete(Object)}. Entity must attached to an entity context. */

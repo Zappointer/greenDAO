@@ -17,12 +17,12 @@
  */
 package de.greenrobot.daotest.entity;
 
-import de.greenrobot.dao.IdentityScopeLong;
+import de.greenrobot.dao.identityscope.IdentityScopeLong;
 import de.greenrobot.daotest.TestEntity;
 
 public class TestEntityIdentityScopeTest extends TestEntityTest {
     @Override
-    protected void setUp() {
+    protected void setUp() throws Exception {
         setIdentityScopeBeforeSetUp(new IdentityScopeLong<TestEntity>());
         super.setUp();
     }

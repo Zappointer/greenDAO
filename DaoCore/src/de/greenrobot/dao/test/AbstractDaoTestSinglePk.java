@@ -16,29 +16,25 @@
 
 package de.greenrobot.dao.test;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
 import android.database.Cursor;
 import android.database.DatabaseUtils;
 import android.database.SQLException;
 import de.greenrobot.dao.AbstractDao;
 import de.greenrobot.dao.Property;
-import de.greenrobot.dao.SqlUtils;
+import de.greenrobot.dao.internal.SqlUtils;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Default tests for single-PK entities.
- * 
+ *
+ * @param <D> DAO class
+ * @param <T> Entity type of the DAO
+ * @param <K> Key type of the DAO
  * @author Markus
- * 
- * @param <D>
- *            DAO class
- * @param <T>
- *            Entity type of the DAO
- * @param <K>
- *            Key type of the DAO
  */
 public abstract class AbstractDaoTestSinglePk<D extends AbstractDao<T, K>, T, K> extends AbstractDaoTest<D, T, K> {
 
@@ -51,7 +47,7 @@ public abstract class AbstractDaoTestSinglePk<D extends AbstractDao<T, K>, T, K>
     }
 
     @Override
-    protected void setUp() {
+    protected void setUp() throws Exception {
         super.setUp();
         Property[] columns = daoAccess.getProperties();
         for (Property column : columns) {
@@ -175,6 +171,26 @@ public abstract class AbstractDaoTestSinglePk<D extends AbstractDao<T, K>, T, K>
         assertEquals(entityList.size() - entitiesToDelete.size(), dao.count());
         for (T deletedEntity : entitiesToDelete) {
             K key = daoAccess.getKey(deletedEntity);
+            assertNotNull(key);
+            assertNull(dao.load(key));
+        }
+    }
+
+    public void testDeleteByKeyInTx() {
+        List<T> entityList = new ArrayList<T>();
+        for (int i = 0; i < 10; i++) {
+            T entity = createEntityWithRandomPk();
+            entityList.add(entity);
+        }
+        dao.insertInTx(entityList);
+        List<K> keysToDelete = new ArrayList<K>();
+        keysToDelete.add(daoAccess.getKey(entityList.get(0)));
+        keysToDelete.add(daoAccess.getKey(entityList.get(3)));
+        keysToDelete.add(daoAccess.getKey(entityList.get(4)));
+        keysToDelete.add(daoAccess.getKey(entityList.get(8)));
+        dao.deleteByKeyInTx(keysToDelete);
+        assertEquals(entityList.size() - keysToDelete.size(), dao.count());
+        for (K key : keysToDelete) {
             assertNotNull(key);
             assertNull(dao.load(key));
         }

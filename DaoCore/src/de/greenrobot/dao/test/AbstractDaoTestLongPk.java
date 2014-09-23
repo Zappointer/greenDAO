@@ -18,7 +18,6 @@ package de.greenrobot.dao.test;
 
 import de.greenrobot.dao.AbstractDao;
 import de.greenrobot.dao.DaoLog;
-import de.greenrobot.dao.test.AbstractDaoTestSinglePk;
 
 /**
  * Base class for DAOs having a long/Long as a PK, which is quite common.
@@ -36,7 +35,7 @@ public abstract class AbstractDaoTestLongPk<D extends AbstractDao<T, Long>, T> e
         super(daoClass);
     }
 
-    /** @inheritdoc */
+    /** {@inheritDoc} */
     protected Long createRandomPk() {
         return random.nextLong();
     }

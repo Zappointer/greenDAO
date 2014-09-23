@@ -20,9 +20,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
-import de.greenrobot.dao.async.AsyncSession;
-
 import android.database.sqlite.SQLiteDatabase;
+import de.greenrobot.dao.async.AsyncSession;
+import de.greenrobot.dao.query.QueryBuilder;
 
 /**
  * DaoSession gives you access to your DAOs, offers convenient persistence methods, and also serves as a session cache.<br/>

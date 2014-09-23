@@ -7,11 +7,11 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteStatement;
 
 import de.greenrobot.dao.AbstractDao;
-import de.greenrobot.dao.DaoConfig;
 import de.greenrobot.dao.Property;
-import de.greenrobot.dao.SqlUtils;
-import de.greenrobot.dao.Query;
-import de.greenrobot.dao.QueryBuilder;
+import de.greenrobot.dao.internal.SqlUtils;
+import de.greenrobot.dao.internal.DaoConfig;
+import de.greenrobot.dao.query.Query;
+import de.greenrobot.dao.query.QueryBuilder;
 
 import de.greenrobot.daotest.TreeEntity;
 
@@ -128,15 +128,17 @@ public class TreeEntityDao extends AbstractDao<TreeEntity, Long> {
     }
     
     /** Internal query to resolve the "children" to-many relationship of TreeEntity. */
-    public synchronized List<TreeEntity> _queryTreeEntity_Children(Long parentId) {
-        if (treeEntity_ChildrenQuery == null) {
-            QueryBuilder<TreeEntity> queryBuilder = queryBuilder();
-            queryBuilder.where(Properties.ParentId.eq(parentId));
-            treeEntity_ChildrenQuery = queryBuilder.build();
-        } else {
-            treeEntity_ChildrenQuery.setParameter(0, parentId);
+    public List<TreeEntity> _queryTreeEntity_Children(Long parentId) {
+        synchronized (this) {
+            if (treeEntity_ChildrenQuery == null) {
+                QueryBuilder<TreeEntity> queryBuilder = queryBuilder();
+                queryBuilder.where(Properties.ParentId.eq(null));
+                treeEntity_ChildrenQuery = queryBuilder.build();
+            }
         }
-        return treeEntity_ChildrenQuery.list();
+        Query<TreeEntity> query = treeEntity_ChildrenQuery.forCurrentThread();
+        query.setParameter(0, parentId);
+        return query.list();
     }
 
     private String selectDeep;

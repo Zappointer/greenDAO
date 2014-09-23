@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011 Markus Junginger, greenrobot (http://greenrobot.de)
+ * Copyright (C) 2011-2013 Markus Junginger, greenrobot (http://greenrobot.de)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,13 @@ import android.database.CursorWindow;
 import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteStatement;
+import de.greenrobot.dao.identityscope.IdentityScope;
+import de.greenrobot.dao.identityscope.IdentityScopeLong;
+import de.greenrobot.dao.internal.DaoConfig;
+import de.greenrobot.dao.internal.FastCursor;
+import de.greenrobot.dao.internal.TableStatements;
+import de.greenrobot.dao.query.Query;
+import de.greenrobot.dao.query.QueryBuilder;
 
 /**
  * Base class for all DAOs: Implements entity operations like insert, load, delete, and query.
@@ -39,6 +46,15 @@ import android.database.sqlite.SQLiteStatement;
  *            Entity type
  * @param <K>
  *            Primary key (PK) type; use Void if entity does not have exactly one PK
+ */
+/*
+ * When operating on TX, statements, or identity scope the following locking order must be met to avoid deadlocks:
+ * 
+ * 1.) If not inside a TX already, begin a TX to acquire a DB connection (connection is to be handled like a lock)
+ * 
+ * 2.) The SQLiteStatement
+ * 
+ * 3.) identityScope
  */
 public abstract class AbstractDao<T, K> {
     protected final SQLiteDatabase db;
@@ -240,9 +256,9 @@ public abstract class AbstractDao<T, K> {
     }
 
     private void executeInsertInTx(SQLiteStatement stmt, Iterable<T> entities, boolean setPrimaryKey) {
-        synchronized (stmt) {
-            db.beginTransaction();
-            try {
+        db.beginTransaction();
+        try {
+            synchronized (stmt) {
                 if (identityScope != null) {
                     identityScope.lock();
                 }
@@ -261,10 +277,10 @@ public abstract class AbstractDao<T, K> {
                         identityScope.unlock();
                     }
                 }
-                db.setTransactionSuccessful();
-            } finally {
-                db.endTransaction();
             }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
         }
     }
 
@@ -285,10 +301,26 @@ public abstract class AbstractDao<T, K> {
      */
     public long insertWithoutSettingPk(T entity) {
         SQLiteStatement stmt = statements.getInsertStatement();
-        synchronized (stmt) {
-            bindValues(stmt, entity);
-            return stmt.executeInsert();
+        long rowId;
+        if (db.isDbLockedByCurrentThread()) {
+            synchronized (stmt) {
+                bindValues(stmt, entity);
+                rowId = stmt.executeInsert();
+            }
+        } else {
+            // Do TX to acquire a connection before locking the stmt to avoid deadlocks
+            db.beginTransaction();
+            try {
+                synchronized (stmt) {
+                    bindValues(stmt, entity);
+                    rowId = stmt.executeInsert();
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
         }
+        return rowId;
     }
 
     /**
@@ -302,9 +334,23 @@ public abstract class AbstractDao<T, K> {
 
     private long executeInsert(T entity, SQLiteStatement stmt) {
         long rowId;
-        synchronized (stmt) {
-            bindValues(stmt, entity);
-            rowId = stmt.executeInsert();
+        if (db.isDbLockedByCurrentThread()) {
+            synchronized (stmt) {
+                bindValues(stmt, entity);
+                rowId = stmt.executeInsert();
+            }
+        } else {
+            // Do TX to acquire a connection before locking the stmt to avoid deadlocks
+            db.beginTransaction();
+            try {
+                synchronized (stmt) {
+                    bindValues(stmt, entity);
+                    rowId = stmt.executeInsert();
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
         }
         updateKeyAfterInsertAndAttach(entity, rowId, true);
         return rowId;
@@ -369,12 +415,12 @@ public abstract class AbstractDao<T, K> {
                 return entity;
             } else {
                 entity = readEntity(cursor, offset);
+                attachEntity(entity);
                 if (lock) {
                     identityScopeLong.put2(key, entity);
                 } else {
                     identityScopeLong.put2NoLock(key, entity);
                 }
-                attachEntity(entity);
                 return entity;
             }
         } else if (identityScope != null) {
@@ -417,15 +463,21 @@ public abstract class AbstractDao<T, K> {
         return loadAllAndCloseCursor(cursor);
     }
 
-    /** Creates a repeatable {@link Query} object based on the given raw SQL where you can pass any WHERE clause and arguments. */
+    /**
+     * Creates a repeatable {@link Query} object based on the given raw SQL where you can pass any WHERE clause and
+     * arguments.
+     */
     public Query<T> queryRawCreate(String where, Object... selectionArg) {
         List<Object> argList = Arrays.asList(selectionArg);
         return queryRawCreateListArgs(where, argList);
     }
 
-    /** Creates a repeatable {@link Query} object based on the given raw SQL where you can pass any WHERE clause and arguments. */
+    /**
+     * Creates a repeatable {@link Query} object based on the given raw SQL where you can pass any WHERE clause and
+     * arguments.
+     */
     public Query<T> queryRawCreateListArgs(String where, Collection<Object> selectionArg) {
-        return new Query<T>(this, statements.getSelectAll() + where, selectionArg);
+        return Query.internalCreate(this, statements.getSelectAll() + where, selectionArg.toArray());
     }
 
     public void deleteAll() {
@@ -443,17 +495,27 @@ public abstract class AbstractDao<T, K> {
         assertSinglePk();
         K key = getKeyVerified(entity);
         deleteByKey(key);
-        if (identityScope != null) {
-            identityScope.remove(key);
-        }
     }
 
     /** Deletes an entity with the given PK from the database. Currently, only single value PK entities are supported. */
     public void deleteByKey(K key) {
         assertSinglePk();
         SQLiteStatement stmt = statements.getDeleteStatement();
-        synchronized (stmt) {
-            deleteByKeyInsideSynchronized(key, stmt);
+        if (db.isDbLockedByCurrentThread()) {
+            synchronized (stmt) {
+                deleteByKeyInsideSynchronized(key, stmt);
+            }
+        } else {
+            // Do TX to acquire a connection before locking the stmt to avoid deadlocks
+            db.beginTransaction();
+            try {
+                synchronized (stmt) {
+                    deleteByKeyInsideSynchronized(key, stmt);
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
         }
         if (identityScope != null) {
             identityScope.remove(key);
@@ -463,10 +525,56 @@ public abstract class AbstractDao<T, K> {
     private void deleteByKeyInsideSynchronized(K key, SQLiteStatement stmt) {
         if (key instanceof Long) {
             stmt.bindLong(1, (Long) key);
+        } else if (key == null) {
+            throw new DaoException("Cannot delete entity, key is null");
         } else {
             stmt.bindString(1, key.toString());
         }
         stmt.execute();
+    }
+
+    private void deleteInTxInternal(Iterable<T> entities, Iterable<K> keys) {
+        assertSinglePk();
+        SQLiteStatement stmt = statements.getDeleteStatement();
+        List<K> keysToRemoveFromIdentityScope = null;
+        db.beginTransaction();
+        try {
+            synchronized (stmt) {
+                if (identityScope != null) {
+                    identityScope.lock();
+                    keysToRemoveFromIdentityScope = new ArrayList<K>();
+                }
+                try {
+                    if (entities != null) {
+                        for (T entity : entities) {
+                            K key = getKeyVerified(entity);
+                            deleteByKeyInsideSynchronized(key, stmt);
+                            if (keysToRemoveFromIdentityScope != null) {
+                                keysToRemoveFromIdentityScope.add(key);
+                            }
+                        }
+                    }
+                    if (keys != null) {
+                        for (K key : keys) {
+                            deleteByKeyInsideSynchronized(key, stmt);
+                            if (keysToRemoveFromIdentityScope != null) {
+                                keysToRemoveFromIdentityScope.add(key);
+                            }
+                        }
+                    }
+                } finally {
+                    if (identityScope != null) {
+                        identityScope.unlock();
+                    }
+                }
+            }
+            db.setTransactionSuccessful();
+            if (keysToRemoveFromIdentityScope != null && identityScope != null) {
+                identityScope.remove(keysToRemoveFromIdentityScope);
+            }
+        } finally {
+            db.endTransaction();
+        }
     }
 
     /**
@@ -476,37 +584,7 @@ public abstract class AbstractDao<T, K> {
      *            The entities to delete.
      */
     public void deleteInTx(Iterable<T> entities) {
-        assertSinglePk();
-        SQLiteStatement stmt = statements.getDeleteStatement();
-        synchronized (stmt) {
-            db.beginTransaction();
-            try {
-                List<K> keysToRemoveFromIdentityScope = null;
-                if (identityScope != null) {
-                    identityScope.lock();
-                    keysToRemoveFromIdentityScope = new ArrayList<K>();
-                }
-                try {
-                    for (T entity : entities) {
-                        K key = getKeyVerified(entity);
-                        deleteByKeyInsideSynchronized(key, stmt);
-                        if (keysToRemoveFromIdentityScope != null) {
-                            keysToRemoveFromIdentityScope.add(key);
-                        }
-                    }
-                } finally {
-                    if (identityScope != null) {
-                        identityScope.unlock();
-                    }
-                }
-                db.setTransactionSuccessful();
-                if (keysToRemoveFromIdentityScope != null && identityScope != null) {
-                    identityScope.remove(keysToRemoveFromIdentityScope);
-                }
-            } finally {
-                db.endTransaction();
-            }
-        }
+        deleteInTxInternal(entities, null);
     }
 
     /**
@@ -516,7 +594,27 @@ public abstract class AbstractDao<T, K> {
      *            The entities to delete.
      */
     public void deleteInTx(T... entities) {
-        deleteInTx(Arrays.asList(entities));
+        deleteInTxInternal(Arrays.asList(entities), null);
+    }
+
+    /**
+     * Deletes all entities with the given keys in the database using a transaction.
+     * 
+     * @param keys
+     *            Keys of the entities to delete.
+     */
+    public void deleteByKeyInTx(Iterable<K> keys) {
+        deleteInTxInternal(null, keys);
+    }
+
+    /**
+     * Deletes all entities with the given keys in the database using a transaction.
+     * 
+     * @param keys
+     *            Keys of the entities to delete.
+     */
+    public void deleteByKeyInTx(K... keys) {
+        deleteInTxInternal(null, Arrays.asList(keys));
     }
 
     /** Resets all locally changed properties of the entity by reloading the values from the database. */
@@ -544,13 +642,26 @@ public abstract class AbstractDao<T, K> {
     public void update(T entity) {
         assertSinglePk();
         SQLiteStatement stmt = statements.getUpdateStatement();
-        synchronized (stmt) {
-            updateInsideSynchronized(entity, stmt, true);
+        if (db.isDbLockedByCurrentThread()) {
+            synchronized (stmt) {
+                updateInsideSynchronized(entity, stmt, true);
+            }
+        } else {
+            // Do TX to acquire a connection before locking the stmt to avoid deadlocks
+            db.beginTransaction();
+            try {
+                synchronized (stmt) {
+                    updateInsideSynchronized(entity, stmt, true);
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
         }
     }
 
     public QueryBuilder<T> queryBuilder() {
-        return new QueryBuilder<T>(this);
+        return QueryBuilder.internalCreate(this);
     }
 
     protected void updateInsideSynchronized(T entity, SQLiteStatement stmt, boolean lock) {
@@ -560,6 +671,8 @@ public abstract class AbstractDao<T, K> {
         K key = getKey(entity);
         if (key instanceof Long) {
             stmt.bindLong(index, (Long) key);
+        } else if (key == null) {
+            throw new DaoException("Cannot update entity without key - was it inserted before?");
         } else {
             stmt.bindString(index, key.toString());
         }
@@ -576,6 +689,7 @@ public abstract class AbstractDao<T, K> {
      *            The entitiy to attach
      * */
     protected final void attachEntity(K key, T entity, boolean lock) {
+        attachEntity(entity);
         if (identityScope != null && key != null) {
             if (lock) {
                 identityScope.put(key, entity);
@@ -583,11 +697,11 @@ public abstract class AbstractDao<T, K> {
                 identityScope.putNoLock(key, entity);
             }
         }
-        attachEntity(entity);
     }
 
     /**
-     * Sub classes with relations additionally set the DaoMaster here.
+     * Sub classes with relations additionally set the DaoMaster here. Must be called before the entity is attached to
+     * the identity scope.
      * 
      * @param entity
      *            The entitiy to attach
@@ -603,9 +717,9 @@ public abstract class AbstractDao<T, K> {
      */
     public void updateInTx(Iterable<T> entities) {
         SQLiteStatement stmt = statements.getUpdateStatement();
-        synchronized (stmt) {
-            db.beginTransaction();
-            try {
+        db.beginTransaction();
+        try {
+            synchronized (stmt) {
                 if (identityScope != null) {
                     identityScope.lock();
                 }
@@ -618,10 +732,10 @@ public abstract class AbstractDao<T, K> {
                         identityScope.unlock();
                     }
                 }
-                db.setTransactionSuccessful();
-            } finally {
-                db.endTransaction();
             }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
         }
     }
 

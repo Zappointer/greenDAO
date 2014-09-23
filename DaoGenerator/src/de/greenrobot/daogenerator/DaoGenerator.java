@@ -47,10 +47,11 @@ public class DaoGenerator {
     private Template templateDaoSession;
     private Template templateEntity;
     private Template templateDaoUnitTest;
+    private Template templateContentProvider;
 
     public DaoGenerator() throws IOException {
         System.out.println("greenDAO Generator");
-        System.out.println("Copyright 2011-2012 Markus Junginger, greenrobot.de. Licensed under GPL V3.");
+        System.out.println("Copyright 2011-2014 Markus Junginger, greenrobot.de. Licensed under GPL V3.");
         System.out.println("This program comes with ABSOLUTELY NO WARRANTY");
 
         patternKeepIncludes = compilePattern("INCLUDES");
@@ -66,6 +67,7 @@ public class DaoGenerator {
         templateDaoSession = config.getTemplate("dao-session.ftl");
         templateEntity = config.getTemplate("entity.ftl");
         templateDaoUnitTest = config.getTemplate("dao-unit-test.ftl");
+        templateContentProvider = config.getTemplate("content-provider.ftl");
     }
 
     private Pattern compilePattern(String sectionName) {
@@ -111,6 +113,12 @@ public class DaoGenerator {
                     System.out.println("Skipped " + javaFilename.getCanonicalPath());
                 }
             }
+            for (ContentProvider contentProvider : entity.getContentProviders()) {
+                Map<String, Object> additionalObjectsForTemplate = new HashMap<String, Object>();
+                additionalObjectsForTemplate.put("contentProvider", contentProvider);
+                generate(templateContentProvider, outDirFile, entity.getJavaPackage(), entity.getClassName()
+                        + "ContentProvider", schema, entity, additionalObjectsForTemplate);
+            }
         }
         generate(templateDaoMaster, outDirFile, schema.getDefaultJavaPackageDao(), "DaoMaster", schema, null);
         generate(templateDaoSession, outDirFile, schema.getDefaultJavaPackageDao(), "DaoSession", schema, null);
@@ -123,21 +131,28 @@ public class DaoGenerator {
         File file = new File(filename);
         if (!file.exists()) {
             throw new IOException(filename
-                    + " does not exist. This check is to prevent accidential file generation into a wrong path.");
+                    + " does not exist. This check is to prevent accidental file generation into a wrong path.");
         }
         return file;
     }
 
     private void generate(Template template, File outDirFile, String javaPackage, String javaClassName, Schema schema,
             Entity entity) throws Exception {
-        try {
-            File file = toJavaFilename(outDirFile, javaPackage, javaClassName);
-            file.getParentFile().mkdirs();
+        generate(template, outDirFile, javaPackage, javaClassName, schema, entity, null);
+    }
 
+    private void generate(Template template, File outDirFile, String javaPackage, String javaClassName, Schema schema,
+            Entity entity, Map<String, Object> additionalObjectsForTemplate) throws Exception {
             Map<String, Object> root = new HashMap<String, Object>();
             root.put("schema", schema);
             root.put("entity", entity);
 			root.put("annotation_no_name", Annotation.NO_NAME);
+        if (additionalObjectsForTemplate != null) {
+            root.putAll(additionalObjectsForTemplate);
+        }
+        try {
+            File file = toJavaFilename(outDirFile, javaPackage, javaClassName);
+            file.getParentFile().mkdirs();
 
             if (entity != null && entity.getHasKeepSections()) {
                 checkKeepSections(file, root);
@@ -152,6 +167,7 @@ public class DaoGenerator {
                 writer.close();
             }
         } catch (Exception ex) {
+            System.err.println("Data map for template: " + root);
             System.err.println("Error while generating " + javaPackage + "." + javaClassName + " ("
                     + outDirFile.getCanonicalPath() + ")");
             throw ex;

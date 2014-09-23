@@ -19,7 +19,7 @@ package de.greenrobot.daotest.entity;
 
 import java.util.List;
 
-import de.greenrobot.dao.IdentityScopeType;
+import de.greenrobot.dao.identityscope.IdentityScopeType;
 import de.greenrobot.daotest.RelationEntity;
 import de.greenrobot.daotest.RelationEntityDao;
 
@@ -29,7 +29,7 @@ import de.greenrobot.daotest.RelationEntityDao;
 public class RelationEntityTestIdentityScope extends RelationEntityTest {
 
     @Override
-    protected void setUp() {
+    protected void setUp() throws Exception {
         identityScopeTypeForSession = IdentityScopeType.Session;
         super.setUp();
     }

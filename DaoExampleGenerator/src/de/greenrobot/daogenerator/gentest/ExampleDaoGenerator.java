@@ -27,7 +27,7 @@ import de.greenrobot.daogenerator.*;
 public class ExampleDaoGenerator {
 
     public static void main(String[] args) throws Exception {
-        Schema schema = new Schema(3, "de.greenrobot.daoexample");
+        Schema schema = new Schema(1000, "de.greenrobot.daoexample");
         schema.enableKeepSectionsByDefault();
         addNote(schema);
         addCustomerOrder(schema);

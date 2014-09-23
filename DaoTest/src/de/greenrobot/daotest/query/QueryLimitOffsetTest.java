@@ -19,8 +19,8 @@ package de.greenrobot.daotest.query;
 
 import java.util.List;
 
-import de.greenrobot.dao.Query;
-import de.greenrobot.dao.QueryBuilder;
+import de.greenrobot.dao.query.Query;
+import de.greenrobot.dao.query.QueryBuilder;
 import de.greenrobot.daotest.TestEntity;
 import de.greenrobot.daotest.TestEntityDao.Properties;
 import de.greenrobot.daotest.entity.TestEntityTestBase;
@@ -28,7 +28,7 @@ import de.greenrobot.daotest.entity.TestEntityTestBase;
 public class QueryLimitOffsetTest extends TestEntityTestBase {
     
     @Override
-    protected void setUp() {
+    protected void setUp() throws Exception {
         super.setUp();
         QueryBuilder.LOG_SQL = true;
         QueryBuilder.LOG_VALUES = true;
