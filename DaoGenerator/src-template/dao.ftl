@@ -123,6 +123,8 @@ as property>${property.columnName}<#if property_has_next>,</#if></#list>);");
     @Override
     protected void bindValues(SQLiteStatement stmt, ${entity.className} entity) {
         stmt.clearBindings();
+        entity.onBeforeSave();
+
 <#list entity.properties as property>
 <#if property.notNull || entity.protobuf>
 <#if entity.protobuf>
@@ -207,6 +209,7 @@ as property>${property.columnName}<#if property_has_next>,</#if></#list>);");
             property.propertyType == "Date">)</#if><#if property_has_next>,</#if> // ${property.propertyName}
 </#list>        
         );
+        entity.onAfterLoad();
         return entity;
 <#else>
 <#--
@@ -214,6 +217,7 @@ as property>${property.columnName}<#if property_has_next>,</#if></#list>);");
 -->
         ${entity.className} entity = new ${entity.className}();
         readEntity(cursor, entity, offset);
+        entity.onAfterLoad();
         return entity;
 </#if>
     }
@@ -232,6 +236,7 @@ as property>${property.columnName}<#if property_has_next>,</#if></#list>);");
             property.propertyType == "Date">)</#if>);
 </#list>
 </#if>
+        entity.onAfterLoad();
      }
     
     /** @inheritdoc */
